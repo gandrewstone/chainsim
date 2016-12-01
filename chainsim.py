@@ -47,7 +47,7 @@ class Blockchain:
     return ret
 
 
-  def getTip(self,eb,ad):
+  def getTipxx(self,eb,ad):
     tips = []
     for tip in self.tips:
       if tip.biggestSize <= eb:
@@ -107,14 +107,38 @@ class Miner:
     self.blockchain = blockchain        # this node's blockchain data
     self.generatesize = gensize         # How big of a block will this node mine (it is assumed that there are enough txs)
 
+  def getTip(self):
+    eb = self.excessive
+    ad = self.acceptdepth
+    bc = self.blockchain
+    tips = []
+    for tip in bc.tips:
+      if tip.biggestSize <= eb:
+        tips.append(tip)
+      else:
+        pos = tip
+        skip=False
+        for i in range(0,ad):
+          pos = pos.parent
+          if pos.biggestSize <= eb:  # haven't gone far enough to exceed AD
+            tips.append(pos)
+            skip=True
+            break
+	if (not skip) and pos.biggestSize >= eb:  # accept depth exceeded
+          tips.append(tip)  # If AD is exceeded, choose the tip
+    tips = sorted(tips,key=lambda x: x.height, reverse=True)
+    # TODO random if tips are =
+    return tips[0]
+    
   def mine(self,size=None):
     """Attempt to mine a block.  The chance of successfully mining a block is proportional to this node's configured hash power."""
     if size is None: size = self.generatesize
     if self.hasher(1):
-      blk = self.blockchain.getTip(self.excessive, self.acceptdepth)
+      blk = self.getTip()
       self.blockchain.extend(blk, size)
       return True
     return False
+
 
   def hasher(self,interval):
     """(internal) Simulate hashing for an interval"""
@@ -123,6 +147,37 @@ class Miner:
       if r <= self.hashpct*(1.0/600.0):
         return True
     return False
+
+
+class MinerTrailingBug(Miner):
+  """This miner fixes an issue where block sizes that persistently exceed the EB cause the miners to always trail the chain tip."""
+  def __init__(self, hashpct, eb,ad, gensize, blockchain=None):
+    """constructor, pass the hash as a fraction of 1, the excessive block size, the accept depth, the generation size, and the blockchain"""
+    Miner.__init__(self,hashpct, eb,ad,gensize,blockchain)
+
+  def getTip(self):
+    eb = self.excessive
+    ad = self.acceptdepth
+    bc = self.blockchain
+    tips = []
+    for tip in bc.tips:
+      if tip.biggestSize <= eb:
+        tips.append(tip)
+      else:
+        pos = tip
+        skip=False
+        for i in range(0,ad):
+          pos = pos.parent
+          if pos.biggestSize <= eb:  # haven't gone far enough to exceed AD
+            tips.append(pos)
+            skip=True
+            break
+	if (not skip) and pos.biggestSize >= eb:  # accept depth exceeded
+          tips.append(pos)  # so the block AD behind is the tip.
+    tips = sorted(tips,key=lambda x: x.height, reverse=True)
+    # TODO random if tips are =
+    return tips[0]
+
 
 
 def TestChain(args):
@@ -140,8 +195,8 @@ def TestChainSplit(args):
   random.seed()  # 1)
 
   chain = Blockchain()
-  miner = Miner(0.5,1000000, 4,1000000,chain)
-  minerb = Miner(0.5,2000000, 4,2000000,chain)
+  miner = Miner(0.5, 1000000, 4,1000000,chain)
+  minerb = Miner(0.5, 2000000, 4,2000000,chain)
   result = [0]
   for i in range(1,1000):
     if miner.mine():
@@ -154,143 +209,3 @@ def TestChainSplit(args):
   chain.p()
   pdb.set_trace()
   chain.printChain(chain.start,0)
-
-
-def runChainSplitSbyL(smallPct, largePct,preforkblocks=1000, postforkblocks=100000):
-  """
-  Returns the number of chain tips in the final full blockchain.  There is one tip per chain fork.
-  """
-  random.seed()  # 1)
-
-  chain = Blockchain()
-  # Create a group of miners with EB=1MB, AD=4, and generate size = 1MB
-  miner = Miner(smallPct, 1000000,  4, 1000000, chain)
-  # Create a 2nd group of miners with EB=2MB, AD=4, and generate size = 2MB
-  minerb = Miner(largePct, 2000000, 4, 2000000, chain)
-
-  for i in range(1,preforkblocks):   # Everyone is mining smaller blocks.
-    miner.mine()                     # So just let "miner" mine
- 
-  for i in range(1,postforkblocks):  # Now its time to mine big and smaller blocks
-    miner.mine()                     # so let both mine
-    minerb.mine()                    # this call order doesn't matter because successful mining is random
-
-  #chain.p()
-  #chain.printChain(chain.start,0)
-  forkLens = chain.getForkLengths()
-  return (len(chain.tips), forkLens)
-
-def runChainSplit2(s,l,iterations=100):
-  """Run many iterations of a 2-way chain split, where a group of miners start producing 
-     and accepting larger blocks.
-
-     Pass the small block hashpower as a fraction of 1,
-     the large block hashpower as a fraction of 1,
-     and the number of iterations to run.
-
-     This routine prints out data in the following format:
-     0.950000/0.050000: {0: 97, 1: 3, ...}
-     ^ largeblk  ^small  ^ 97 runs had no fork
-                                ^ 3 runs had one fork
-  """
-  results = []
-  maxForkLen=0
-  for i in range(0,iterations):
-    (numForks, forkLengths) = runChainSplitSbyL(s,l)
-    numForks -= 1  # Because the main chain isn't a fork
-    results.append(numForks)
-    forkLengths.sort(reverse=True)
-    logging.info("%f/%f.%d: fork lengths: %s" % (l,s, i, str(forkLengths)))
-    if len(forkLengths) > 1:  # because main chain is forkLengths[0]
-      if maxForkLen < forkLengths[1]: maxForkLen = forkLengths[1]
-  rd = {}
-  for r in results:
-    t = rd.get(r,0)
-    rd[r] = t+1
-  print "%f/%f: %d, %s" % (l,s, maxForkLen, str(rd))
-  
-
-
-def Test():
-  random.seed()  # 1)
-
-  print "           SPLIT : max fork depth, { X:Y where X runs had Y forks }"
-#  runChainSplit2(0.00,1)
-#  runChainSplit2(0.0001,.999)
-  runChainSplit2(0.50,0.50)
-  runChainSplit2(0.40,0.60)
-  runChainSplit2(0.333,0.667)
-  runChainSplit2(0.25,0.75)
-  runChainSplit2(0.20,0.80)
-  runChainSplit2(0.10,0.90)
-  runChainSplit2(0.05,0.95)
-
-
-
-def Testthreaded():
-  t=[]
-  t.append(threading.Thread(target=runChainSplit2, args=(0.50,0.50)))
-  t.append(threading.Thread(target=runChainSplit2, args=(0.40,0.60)))
-  t.append(threading.Thread(target=runChainSplit2, args=(0.333,0.667)))
-  t.append(threading.Thread(target=runChainSplit2, args=(0.25,0.75)))
-  t.append(threading.Thread(target=runChainSplit2, args=(0.20,0.80)))
-  t.append(threading.Thread(target=runChainSplit2, args=(0.10,0.90)))
-  t.append(threading.Thread(target=runChainSplit2, args=(0.05,0.95)))
-
-  for th in t:
-    th.start()
-  for th in t:
-    th.join()
-  
-def Test100Pct(args):
-  """ This old test just tests that it all works without a chain split"""
-  random.seed()  # 1)
-
-  miner = Miner(1.0, 1000000, 4, 1000000)
-  result = [0]
-  for i in range(1,1000000):
-    if miner.hasher(1):
-      result.append(i)
-
-  print result
-  
-  prior = result[0]
-  totalInterval = 0
-  for i in result[1:]:
-    interval = i - prior
-    prior = i
-    print interval
-    totalInterval += interval
-  
-  avgInterval = totalInterval/(len(result)-1)
-  print "average interval: ", avgInterval
-
-
-def noop():
-  results = []
-  for i in range(1,1000):
-    results.append(TestChainSplitSbyL(0.25,0.75)-1)
-  print results
-  rd = {}
-  for r in results:
-    t = rd.get(r,0)
-    rd[r] = t+1
-  print "75/25:", rd
-
-  results = []
-  for i in range(1,1000):
-    results.append(TestChainSplitSbyL(0.333,0.667)-2)
-  print results
-  rd = {}
-  for r in results:
-    t = rd.get(r,0)
-    rd[r] = t+1
-  print "66/33:", rd
-
-
-
-  #TestChainSplit([])
-  #TestChain([])
-  #Test100Pct([])
-
-  
