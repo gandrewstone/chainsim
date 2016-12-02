@@ -1,7 +1,7 @@
 from chainsim import *
 
 
-def runChainSplitSbyL(MinerClass, smallPct, largePct,preforktime=1000, postforktime=100000):
+def runChainSplitSbyL(MinerClass, smallPct, largePct,preforktime=6000, postforktime=1000000):
   """
   Returns the number of chain tips in the final full blockchain.  There is one tip per chain fork.
   """
@@ -23,7 +23,10 @@ def runChainSplitSbyL(MinerClass, smallPct, largePct,preforktime=1000, postforkt
   #chain.p()
   #chain.printChain(chain.start,0)
   forkLens = chain.getForkLengths()
-  return (len(chain.tips), forkLens)
+  height = 0
+  for tip in chain.tips:  # find the max height
+    if tip.height > height: height = tip.height  
+  return (len(chain.tips), forkLens, height)
 
 def runChainSplit2(MinerClass,s,l,iterations=100):
   """Run many iterations of a 2-way chain split, where a group of miners start producing 
@@ -40,19 +43,39 @@ def runChainSplit2(MinerClass,s,l,iterations=100):
   """
   results = []
   maxForkLen=0
+  orphans=[]
+  numblocks=[]
+  blockHeights = []
   for i in range(0,iterations):
-    (numForks, forkLengths) = runChainSplitSbyL(MinerClass,s,l)
+    (numForks, forkLengths, blockheight) = runChainSplitSbyL(MinerClass,s,l)
     numForks -= 1  # Because the main chain isn't a fork
     results.append(numForks)
     forkLengths.sort(reverse=True)
     logging.info("%f/%f.%d: fork lengths: %s" % (l,s, i, str(forkLengths)))
+    orphan = 0
     if len(forkLengths) > 1:  # because main chain is forkLengths[0]
       if maxForkLen < forkLengths[1]: maxForkLen = forkLengths[1]
+      for fl in forkLengths[1:]:
+        orphan += fl
+        orphans.append(orphan)
+    numblocks.append(sum(forkLengths))
+    blockHeights.append(blockheight)
+
+  if numblocks:
+    maxNumBlocks = max(numblocks)
+    avgNumBlocks = sum(numblocks)/len(numblocks)
+  if orphans:  
+    maxOrphan = max(orphans)
+    avgOrphan = sum(orphans)/len(orphans)
+  else:
+    maxOrphan = 0
+    avgOrphan = 0
+  maxBlockHeight = max(blockHeights)
   rd = {}
   for r in results:
     t = rd.get(r,0)
     rd[r] = t+1
-  print "%f/%f: %d, %s" % (l,s, maxForkLen, str(rd))
+  print "%f/%f (%d, %d, %d): %d, %d, %d, %s" % (l,s, maxBlockHeight, maxNumBlocks, avgNumBlocks, maxForkLen, maxOrphan, avgOrphan, str(rd))
   
 
 
@@ -62,26 +85,28 @@ def Test():
 #  runChainSplit2(0.00,1)
 #  runChainSplit2(0.0001,.999)
 
+  its = 1000
+
   print "BUIP001 + trailing fix"
-  print "           SPLIT : max fork depth, { X:Y where X runs had Y forks }"
-  runChainSplit2(Miner,0.50,0.50)
-  runChainSplit2(Miner,0.40,0.60)
-  runChainSplit2(Miner,0.333,0.667)
-  runChainSplit2(Miner,0.25,0.75)
-  runChainSplit2(Miner,0.20,0.80)
-  runChainSplit2(Miner,0.10,0.90)
-  runChainSplit2(Miner,0.05,0.95)
+  print "           SPLIT (block height, max blocks, avg blocks):  max fork depth, max orphans, avg orphans, { X:Y where Y runs had X forks }"
+  runChainSplit2(Miner,0.50,0.50,iterations=its)
+  runChainSplit2(Miner,0.40,0.60,iterations=its)
+  runChainSplit2(Miner,0.333,0.667,iterations=its)
+  runChainSplit2(Miner,0.25,0.75,iterations=its)
+  runChainSplit2(Miner,0.20,0.80,iterations=its)
+  runChainSplit2(Miner,0.10,0.90,iterations=its)
+  runChainSplit2(Miner,0.05,0.95,iterations=its)
 
   
   print "Original BUIP001 commit (does not move to the chain tip if EB/AD is exceeded)"
-  print "           SPLIT : max fork depth, { X:Y where X runs had Y forks }"
-  runChainSplit2(MinerTrailingBug,0.50,0.50)
-  runChainSplit2(MinerTrailingBug,0.40,0.60)
-  runChainSplit2(MinerTrailingBug,0.333,0.667)
-  runChainSplit2(MinerTrailingBug,0.25,0.75)
-  runChainSplit2(MinerTrailingBug,0.20,0.80)
-  runChainSplit2(MinerTrailingBug,0.10,0.90)
-  runChainSplit2(MinerTrailingBug,0.05,0.95)
+  print "           SPLIT (block height, max blocks, avg blocks):  max fork depth, max orphans, avg orphans, { X:Y where Y runs had X forks }"
+  runChainSplit2(MinerTrailingBug,0.50,0.50,iterations=its)
+  runChainSplit2(MinerTrailingBug,0.40,0.60,iterations=its)
+  runChainSplit2(MinerTrailingBug,0.333,0.667,iterations=its)
+  runChainSplit2(MinerTrailingBug,0.25,0.75,iterations=its)
+  runChainSplit2(MinerTrailingBug,0.20,0.80,iterations=its)
+  runChainSplit2(MinerTrailingBug,0.10,0.90,iterations=its)
+  runChainSplit2(MinerTrailingBug,0.05,0.95,iterations=its)
 
 
 

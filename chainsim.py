@@ -46,27 +46,6 @@ class Blockchain:
       ret.append(length)
     return ret
 
-
-  def getTipxx(self,eb,ad):
-    tips = []
-    for tip in self.tips:
-      if tip.biggestSize <= eb:
-        tips.append(tip)
-      else:
-        pos = tip
-        skip=False
-        for i in range(0,ad):
-          pos = pos.parent
-          if pos.biggestSize <= eb:  # haven't gone far enough to exceed AD
-            tips.append(pos)
-            skip=True
-            break
-	if (not skip) and pos.biggestSize >= eb:  # accept depth exceeded
-          tips.append(tip)
-    tips = sorted(tips,key=lambda x: x.height, reverse=True)
-    # TODO random if tips are =
-    return tips[0]
-
   def extend(self,blk,size):
     self.createNum+=1
     t = Block(size,blk, blk.height+1,createNum=self.createNum)
