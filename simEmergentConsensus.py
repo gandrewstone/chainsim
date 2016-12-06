@@ -86,6 +86,15 @@ def Test():
 #  runChainSplit2(0.0001,.999)
 
   its = 1000
+  print "BUIP041"
+  print "           SPLIT (block height, max blocks, avg blocks):  max fork depth, max orphans, avg orphans, { X:Y where Y runs had X forks }"
+  runChainSplit2(Miner,0.50,0.50,iterations=its)
+  runChainSplit2(Miner,0.40,0.60,iterations=its)
+  runChainSplit2(Miner,0.333,0.667,iterations=its)
+  runChainSplit2(Miner,0.25,0.75,iterations=its)
+  runChainSplit2(Miner,0.20,0.80,iterations=its)
+  runChainSplit2(Miner,0.10,0.90,iterations=its)
+  runChainSplit2(Miner,0.05,0.95,iterations=its)
 
   print "BUIP001 + trailing fix"
   print "           SPLIT (block height, max blocks, avg blocks):  max fork depth, max orphans, avg orphans, { X:Y where Y runs had X forks }"

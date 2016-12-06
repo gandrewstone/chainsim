@@ -16,7 +16,7 @@ class Block:
     self.children = []           
     self.parent = parent         # Reference this block's parent
     self.biggestSize = max(self.parent.biggestSize if self.parent else size, size)
-    self.b = createNum           # A unique count describing the order of block creation across the entire simulation
+    self.id = createNum           # A unique count describing the order of block creation across the entire simulation.  Used to identify the block, similar to the hash
     self.chainMarker = 0              # This marker can be used by algorithms that iterate thru the blockchain
     createNum+=1
 
@@ -57,7 +57,7 @@ class Blockchain:
     recurse = []
     print " "*offset,
     while block:
-      s = "->h%ds%db%d" % (block.height,block.size/1000000,block.b)
+      s = "->h%ds%db%d" % (block.height,block.size/1000000,block.id)
       print s,
       offset += len(s)+1
       if len(block.children)>1:
@@ -85,6 +85,7 @@ class Miner:
     self.acceptdepth = ad               # BU's accept depth parameter
     self.blockchain = blockchain        # this node's blockchain data
     self.generatesize = gensize         # How big of a block will this node mine (it is assumed that there are enough txs)
+    self.block={}                       # For efficiency this simulation just keeps a single copy of the blockchain.  Any miner-specific block can be stored here
 
   def getTip(self):
     eb = self.excessive
@@ -158,6 +159,72 @@ class MinerTrailingBug(Miner):
     return tips[0]
 
 
+class MinerBUIP041(Miner):
+  """This miner fixes an issue where block sizes that persistently exceed the EB cause the miners to always trail the chain tip."""
+  def __init__(self, hashpct, eb,ad, gensize, blockchain=None):
+    """constructor, pass the hash as a fraction of 1, the excessive block size, the accept depth, the generation size, and the blockchain"""
+    Miner.__init__(self,hashpct, eb,ad,gensize,blockchain)
+
+  def getTip(self):
+    eb = self.excessive
+    ad = self.acceptdepth
+    bc = self.blockchain
+    tips = []
+    for tip in bc.tips:
+      if tip.biggestSize <= eb:  # there's no chance this blockchain is excessive
+        tips.append(tip)
+      else:
+        # Calculate EEB
+        pos = tip
+        EEB = 0
+        gates = []
+        maxblocksize = 0
+        for i in range(0,144):
+          data = self.block.get(pos.id,None)
+          maxblocksize = max(pos.size,maxblocksize)
+
+          if data:              
+            if data.get("excessive",False) == True:
+              EEB = max(EEB,pos.size)
+              
+          pos = pos.parent  # go to previous block
+        if EEB == 0:  # There were no excessively marked blocks
+          EEB = max(maxblocksize, self.excessive)    
+
+        if tip.size > EEB:  # an excessive block, let's calculate the accept depth
+          ADfraction = math.floor(self.acceptdepth*(tip.size - EEB)/self.excessive)
+          if EEB == self.excessive:
+            EAD = self.acceptdepth + ADfraction
+          else:
+            EAD = ADfraction
+          self.block[tip.id]["EAD"] = EAD            
+          gates.append((tip.height,pos))
+          
+        # Now look for any other excessive blocks are still waiting for
+        pos = tip
+        tipdist = 0
+        for i in range(0,144):
+          data = self.block.get(pos.id,None)
+          if data:
+            EAD = data.get("EAD", 0)
+            if EAD > 0:  # We already calculated this tip so add it rather than recalc
+              if tipdist >= EAD:                
+                gates.append((pos.height,pos))
+          pos = pos.parent
+          tipdist+=1
+
+        # find the earliest one
+        gates.sort(key=lambda x: x[0])
+
+        tips.append(gates[0])
+
+    tips = sorted(tips,key=lambda x: x.height, reverse=True)
+    # TODO random if tips are =
+    return tips[0]
+
+
+
+  
 
 def TestChain(args):
   random.seed()  # 1)
