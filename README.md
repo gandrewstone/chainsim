@@ -1,4 +1,4 @@
 # chainsim
 Bitcoin Unlimited blockchain simulation
 
- > gt lt test=`<NNN>`
+ > `gt lt test=<NNN>`
